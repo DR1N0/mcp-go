@@ -1,0 +1,8 @@
+# Ignore binary files
+bin
+
+# Ignore virtual environment directories
+.venv
+
+# Environment variables
+.env
