@@ -50,7 +50,7 @@ package main
 import (
     "context"
     
-    mcp "github.com/DR1N0/mcp-go"
+    mcpgo "github.com/DR1N0/mcp-go"
     "github.com/DR1N0/mcp-go/transport/streamable"
 )
 
@@ -61,20 +61,20 @@ type GetReposArgs struct {
 
 func main() {
     // Create server with streamable HTTP transport
-    server := mcp.NewServer(
+    server := mcpgo.NewServer(
         streamable.NewServerTransport("/mcp", ":8000"),
-        mcp.WithName("my-mcp-server"),
-        mcp.WithVersion("1.0.0"),
+        mcpgo.WithName("my-mcp-server"),
+        mcpgo.WithVersion("1.0.0"),
     )
     
     // Register a tool with automatic schema generation
     server.RegisterTool(
         "get_repos",
         "Get GitHub repositories for a service account",
-        func(ctx context.Context, args GetReposArgs) (*mcp.ToolResponse, error) {
+        func(ctx context.Context, args GetReposArgs) (* mcpgo.ToolResponse, error) {
             // Your tool logic here
-            return mcp.NewToolResponse(
-                mcp.NewTextContent("Result here"),
+            return mcpgo.NewToolResponse(
+                mcpgo.NewTextContent("Result here"),
             ), nil
         },
     )
@@ -92,12 +92,12 @@ package main
 import (
     "context"
     
-    mcp "github.com/DR1N0/mcp-go"
+    mcpgo "github.com/DR1N0/mcp-go"
     "github.com/DR1N0/mcp-go/transport/streamable"
 )
 
 func main() {
-    client := mcp.NewClient(
+    client := mcpgo.NewClient(
         streamable.NewClientTransport("http://localhost:8000/mcp"),
     )
     
@@ -191,7 +191,7 @@ type MyToolArgs struct {
 }
 
 server.RegisterTool("my_tool", "Description", 
-    func(ctx context.Context, args MyToolArgs) (*mcp.ToolResponse, error) {
+    func(ctx context.Context, args MyToolArgs) (* mcpgo.ToolResponse, error) {
         // Type-safe access to args.Name and args.Age
     },
 )

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"sync"
 	"time"
@@ -54,16 +55,21 @@ func (t *httpServerTransport) Start(ctx context.Context) error {
 		w.Write([]byte("OK"))
 	})
 
+	// Try to listen first to catch port-in-use errors immediately
+	listener, err := net.Listen("tcp", t.addr)
+	if err != nil {
+		return fmt.Errorf("failed to listen on %s: %w (port may be in use)", t.addr, err)
+	}
+
 	t.server = &http.Server{
-		Addr:    t.addr,
 		Handler: mux,
 	}
 
 	log.Printf("Streamable HTTP server starting on http://localhost%s%s", t.addr, t.endpoint)
 
-	// Run server in a goroutine
+	// Run server in a goroutine with the listener
 	go func() {
-		if err := t.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		if err := t.server.Serve(listener); err != nil && err != http.ErrServerClosed {
 			t.mu.RLock()
 			errorHandler := t.errorHandler
 			t.mu.RUnlock()

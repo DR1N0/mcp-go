@@ -6,6 +6,7 @@ This script tests the MCP server implementation by:
 1. Connecting via streamable HTTP transport
 2. Discovering available tools
 3. Testing the echo and add tools
+4. Testing the time resource
 """
 
 import os
@@ -110,11 +111,6 @@ When using tools, be clear about what you're doing and show the results.""",
         print(f"\n❌ Add tool test failed: {e}")
         import traceback
         traceback.print_exc()
-
-    print("\n" + "=" * 80)
-    print("All tests completed!")
-    print("=" * 80)
-
 
 if __name__ == "__main__":
     main()

@@ -125,12 +125,15 @@ func (p *jsonRpcProtocol) handleRequest(ctx context.Context, msg *types.BaseJSON
 
 // handleResponse processes an incoming response
 func (p *jsonRpcProtocol) handleResponse(msg *types.BaseJSONRPCMessage) {
+	// Normalize the ID to int64 (JSON unmarshaling converts numbers to float64)
+	normalizedID := normalizeID(msg.ID)
+
 	p.mu.RLock()
-	responseChan, ok := p.pendingRequests[msg.ID]
+	responseChan, ok := p.pendingRequests[normalizedID]
 	p.mu.RUnlock()
 
 	if !ok {
-		fmt.Printf("Received response for unknown request ID: %v\n", msg.ID)
+		fmt.Printf("Received response for unknown request ID: %v (type: %T)\n", msg.ID, msg.ID)
 		return
 	}
 
@@ -139,6 +142,24 @@ func (p *jsonRpcProtocol) handleResponse(msg *types.BaseJSONRPCMessage) {
 	case responseChan <- msg:
 	default:
 		// Channel might be closed or full
+	}
+}
+
+// normalizeID converts any numeric ID to int64 for consistent map lookups
+func normalizeID(id interface{}) interface{} {
+	switch v := id.(type) {
+	case float64:
+		return int64(v)
+	case float32:
+		return int64(v)
+	case int:
+		return int64(v)
+	case int32:
+		return int64(v)
+	case int64:
+		return v
+	default:
+		return id
 	}
 }
 
