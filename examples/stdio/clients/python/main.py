@@ -109,10 +109,12 @@ async def run_tests():
         tool_prefix=""
     )
     
-    print("✅ Connected to stdio server")
-    
-    try:
-        # Run all tests
+    # Use a single context manager for all operations to reuse the connection
+    # This avoids reconnecting for each operation, which is much faster
+    async with server:
+        print("✅ Connected to stdio server")
+        
+        # Run all tests using the same connection
         await test_list_tools(server)
         await test_call_echo_tool(server)
         await test_call_add_tool(server)
@@ -122,9 +124,8 @@ async def run_tests():
         print("\n" + "=" * 80)
         print("All tests completed!")
         print("=" * 80)
-    finally:
-        # Server process will be terminated automatically
-        pass
+    
+    # Server process will be terminated automatically when exiting the context
 
 
 if __name__ == "__main__":

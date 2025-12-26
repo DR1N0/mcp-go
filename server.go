@@ -2,10 +2,13 @@ package mcpgo
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log"
 	"reflect"
+	"sort"
+	"sync"
 
 	"github.com/DR1N0/mcp-go/protocol"
 )
@@ -37,12 +40,15 @@ type registeredResource struct {
 
 // MCPServer implements the Server interface with automatic tool management
 type MCPServer struct {
-	transport Transport
-	protocol  protocol.Protocol
-	info      ServerInfo
-	tools     map[string]*registeredTool
-	prompts   map[string]*registeredPrompt
-	resources map[string]*registeredResource
+	transport       Transport
+	protocol        protocol.Protocol
+	info            ServerInfo
+	paginationLimit int
+	started         bool         // Tracks if Serve() has been called
+	mu              sync.RWMutex // Protects tools, prompts, resources, started
+	tools           map[string]*registeredTool
+	prompts         map[string]*registeredPrompt
+	resources       map[string]*registeredResource
 }
 
 // ServerOption configures the server
@@ -62,11 +68,19 @@ func WithVersion(version string) ServerOption {
 	}
 }
 
+// WithPaginationLimit sets the pagination limit for list responses
+func WithPaginationLimit(limit int) ServerOption {
+	return func(s *MCPServer) {
+		s.paginationLimit = limit
+	}
+}
+
 // NewServer creates a new MCP server
 func NewServer(transport Transport, opts ...ServerOption) Server {
 	server := &MCPServer{
-		transport: transport,
-		protocol:  protocol.NewProtocol(),
+		transport:       transport,
+		protocol:        protocol.NewProtocol(),
+		paginationLimit: 10, // Default pagination limit
 		info: ServerInfo{
 			Name:    "mcp-server",
 			Version: "0.1.0",
@@ -108,6 +122,7 @@ func (s *MCPServer) RegisterTool(name, description string, handler interface{}) 
 		return fmt.Errorf("failed to generate schema: %w", err)
 	}
 
+	s.mu.Lock()
 	desc := &description
 	s.tools[name] = &registeredTool{
 		name:        name,
@@ -115,8 +130,13 @@ func (s *MCPServer) RegisterTool(name, description string, handler interface{}) 
 		handler:     handler,
 		inputSchema: schema,
 	}
+	s.mu.Unlock()
 
 	log.Printf("Registered tool: %s", name)
+
+	// Send change notification (after releasing lock to avoid deadlock)
+	s.sendToolsListChangedNotification()
+
 	return nil
 }
 
@@ -132,6 +152,7 @@ func (s *MCPServer) RegisterPrompt(name, description string, handler interface{}
 	// For now, use empty arguments list
 	arguments := []PromptArgument{}
 
+	s.mu.Lock()
 	desc := &description
 	s.prompts[name] = &registeredPrompt{
 		name:        name,
@@ -139,8 +160,13 @@ func (s *MCPServer) RegisterPrompt(name, description string, handler interface{}
 		arguments:   arguments,
 		handler:     handler,
 	}
+	s.mu.Unlock()
 
 	log.Printf("Registered prompt: %s", name)
+
+	// Send change notification (after releasing lock to avoid deadlock)
+	s.sendPromptsListChangedNotification()
+
 	return nil
 }
 
@@ -152,6 +178,7 @@ func (s *MCPServer) RegisterResource(uri, name, description, mimeType string, ha
 		return fmt.Errorf("handler must be a function")
 	}
 
+	s.mu.Lock()
 	desc := &description
 	mime := &mimeType
 	s.resources[uri] = &registeredResource{
@@ -161,8 +188,13 @@ func (s *MCPServer) RegisterResource(uri, name, description, mimeType string, ha
 		mimeType:    mime,
 		handler:     handler,
 	}
+	s.mu.Unlock()
 
 	log.Printf("Registered resource: %s (%s)", name, uri)
+
+	// Send change notification (after releasing lock to avoid deadlock)
+	s.sendResourcesListChangedNotification()
+
 	return nil
 }
 
@@ -172,6 +204,11 @@ func (s *MCPServer) Serve() error {
 	if err := s.protocol.Connect(s.transport); err != nil {
 		return fmt.Errorf("failed to connect protocol: %w", err)
 	}
+
+	// Mark server as started
+	s.mu.Lock()
+	s.started = true
+	s.mu.Unlock()
 
 	log.Printf("MCP server '%s' v%s started", s.info.Name, s.info.Version)
 	return nil
@@ -188,30 +225,24 @@ func (s *MCPServer) handleInitialize(ctx context.Context, params interface{}) (i
 
 	capabilities := ServerCapabilities{}
 
-	// Advertise tools if any are registered
-	if len(s.tools) > 0 {
-		capabilities.Tools = &ToolsCapability{
-			ListChanged: boolPtr(false),
-		}
+	// Advertise tools capability (always, even if empty, to support dynamic registration)
+	capabilities.Tools = &ToolsCapability{
+		ListChanged: boolPtr(true), // Support dynamic registration
 	}
 
-	// Advertise prompts if any are registered
-	if len(s.prompts) > 0 {
-		capabilities.Prompts = &PromptsCapability{
-			ListChanged: boolPtr(false),
-		}
+	// Advertise prompts capability
+	capabilities.Prompts = &PromptsCapability{
+		ListChanged: boolPtr(true), // Support dynamic registration
 	}
 
-	// Advertise resources if any are registered
-	if len(s.resources) > 0 {
-		capabilities.Resources = &ResourcesCapability{
-			Subscribe:   boolPtr(false),
-			ListChanged: boolPtr(false),
-		}
+	// Advertise resources capability
+	capabilities.Resources = &ResourcesCapability{
+		Subscribe:   boolPtr(false),
+		ListChanged: boolPtr(true), // Support dynamic registration
 	}
 
 	return InitializeResponse{
-		ProtocolVersion: "2025-12-25",
+		ProtocolVersion: "2024-11-05",
 		Capabilities:    capabilities,
 		ServerInfo:      s.info,
 	}, nil
@@ -221,18 +252,68 @@ func (s *MCPServer) handleInitialize(ctx context.Context, params interface{}) (i
 func (s *MCPServer) handleToolsList(ctx context.Context, params interface{}) (interface{}, error) {
 	log.Println("Handling tools/list request")
 
-	tools := make([]Tool, 0, len(s.tools))
+	// Parse cursor from params
+	var cursor *string
+	if params != nil {
+		if paramsMap, ok := params.(map[string]interface{}); ok {
+			if cursorVal, ok := paramsMap["cursor"].(string); ok {
+				cursor = &cursorVal
+			}
+		}
+	}
+
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	// Collect all tools
+	allTools := make([]Tool, 0, len(s.tools))
 	for _, tool := range s.tools {
-		tools = append(tools, Tool{
+		allTools = append(allTools, Tool{
 			Name:        tool.name,
 			Description: tool.description,
 			InputSchema: tool.inputSchema,
 		})
 	}
 
+	// Sort by name for consistent pagination
+	sort.Slice(allTools, func(i, j int) bool {
+		return allTools[i].Name < allTools[j].Name
+	})
+
+	// Apply pagination
+	startIndex := 0
+	if cursor != nil && *cursor != "" {
+		// Decode cursor (base64-encoded last item name)
+		decoded, err := base64.StdEncoding.DecodeString(*cursor)
+		if err == nil {
+			lastItem := string(decoded)
+			// Find first item after cursor
+			for i, tool := range allTools {
+				if tool.Name > lastItem {
+					startIndex = i
+					break
+				}
+			}
+		}
+	}
+
+	// Determine end index based on pagination limit
+	endIndex := len(allTools)
+	var nextCursor *string
+	if s.paginationLimit > 0 && startIndex+s.paginationLimit < len(allTools) {
+		endIndex = startIndex + s.paginationLimit
+		// Generate next cursor (base64-encode the last item name)
+		lastItemName := allTools[endIndex-1].Name
+		encoded := base64.StdEncoding.EncodeToString([]byte(lastItemName))
+		nextCursor = &encoded
+	}
+
+	// Return paginated results
+	tools := allTools[startIndex:endIndex]
+
 	return ToolsResponse{
 		Tools:      tools,
-		NextCursor: nil,
+		NextCursor: nextCursor,
 	}, nil
 }
 
@@ -360,18 +441,65 @@ func (s *MCPServer) invokeHandler(handlerValue reflect.Value, hasContext bool, a
 func (s *MCPServer) handlePromptsList(ctx context.Context, params interface{}) (interface{}, error) {
 	log.Println("Handling prompts/list request")
 
-	prompts := make([]Prompt, 0, len(s.prompts))
+	// Parse cursor from params
+	var cursor *string
+	if params != nil {
+		if paramsMap, ok := params.(map[string]interface{}); ok {
+			if cursorVal, ok := paramsMap["cursor"].(string); ok {
+				cursor = &cursorVal
+			}
+		}
+	}
+
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	// Collect all prompts
+	allPrompts := make([]Prompt, 0, len(s.prompts))
 	for _, prompt := range s.prompts {
-		prompts = append(prompts, Prompt{
+		allPrompts = append(allPrompts, Prompt{
 			Name:        prompt.name,
 			Description: prompt.description,
 			Arguments:   prompt.arguments,
 		})
 	}
 
+	// Sort by name for consistent pagination
+	sort.Slice(allPrompts, func(i, j int) bool {
+		return allPrompts[i].Name < allPrompts[j].Name
+	})
+
+	// Apply pagination
+	startIndex := 0
+	if cursor != nil && *cursor != "" {
+		decoded, err := base64.StdEncoding.DecodeString(*cursor)
+		if err == nil {
+			lastItem := string(decoded)
+			for i, prompt := range allPrompts {
+				if prompt.Name > lastItem {
+					startIndex = i
+					break
+				}
+			}
+		}
+	}
+
+	// Determine end index based on pagination limit
+	endIndex := len(allPrompts)
+	var nextCursor *string
+	if s.paginationLimit > 0 && startIndex+s.paginationLimit < len(allPrompts) {
+		endIndex = startIndex + s.paginationLimit
+		lastItemName := allPrompts[endIndex-1].Name
+		encoded := base64.StdEncoding.EncodeToString([]byte(lastItemName))
+		nextCursor = &encoded
+	}
+
+	// Return paginated results
+	prompts := allPrompts[startIndex:endIndex]
+
 	return ListPromptsResponse{
 		Prompts:    prompts,
-		NextCursor: nil,
+		NextCursor: nextCursor,
 	}, nil
 }
 
@@ -413,9 +541,23 @@ func (s *MCPServer) handlePromptsGet(ctx context.Context, params interface{}) (i
 func (s *MCPServer) handleResourcesList(ctx context.Context, params interface{}) (interface{}, error) {
 	log.Println("Handling resources/list request")
 
-	resources := make([]Resource, 0, len(s.resources))
+	// Parse cursor from params
+	var cursor *string
+	if params != nil {
+		if paramsMap, ok := params.(map[string]interface{}); ok {
+			if cursorVal, ok := paramsMap["cursor"].(string); ok {
+				cursor = &cursorVal
+			}
+		}
+	}
+
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	// Collect all resources
+	allResources := make([]Resource, 0, len(s.resources))
 	for _, resource := range s.resources {
-		resources = append(resources, Resource{
+		allResources = append(allResources, Resource{
 			URI:         resource.uri,
 			Name:        resource.name,
 			Description: resource.description,
@@ -423,9 +565,42 @@ func (s *MCPServer) handleResourcesList(ctx context.Context, params interface{})
 		})
 	}
 
+	// Sort by URI for consistent pagination
+	sort.Slice(allResources, func(i, j int) bool {
+		return allResources[i].URI < allResources[j].URI
+	})
+
+	// Apply pagination
+	startIndex := 0
+	if cursor != nil && *cursor != "" {
+		decoded, err := base64.StdEncoding.DecodeString(*cursor)
+		if err == nil {
+			lastURI := string(decoded)
+			for i, resource := range allResources {
+				if resource.URI > lastURI {
+					startIndex = i
+					break
+				}
+			}
+		}
+	}
+
+	// Determine end index based on pagination limit
+	endIndex := len(allResources)
+	var nextCursor *string
+	if s.paginationLimit > 0 && startIndex+s.paginationLimit < len(allResources) {
+		endIndex = startIndex + s.paginationLimit
+		lastURI := allResources[endIndex-1].URI
+		encoded := base64.StdEncoding.EncodeToString([]byte(lastURI))
+		nextCursor = &encoded
+	}
+
+	// Return paginated results
+	resources := allResources[startIndex:endIndex]
+
 	return ListResourcesResponse{
 		Resources:  resources,
-		NextCursor: nil,
+		NextCursor: nextCursor,
 	}, nil
 }
 
@@ -539,6 +714,147 @@ func (s *MCPServer) callResourceHandler(handler interface{}) (*ResourceResponse,
 func (s *MCPServer) handlePing(ctx context.Context, params interface{}) (interface{}, error) {
 	log.Println("Handling ping request")
 	return map[string]interface{}{}, nil
+}
+
+// DeregisterTool removes a tool from the server
+func (s *MCPServer) DeregisterTool(name string) error {
+	s.mu.Lock()
+	if _, exists := s.tools[name]; !exists {
+		s.mu.Unlock()
+		return fmt.Errorf("tool not found: %s", name)
+	}
+
+	delete(s.tools, name)
+	s.mu.Unlock()
+
+	log.Printf("Deregistered tool: %s", name)
+
+	// Send change notification (after releasing lock to avoid deadlock)
+	s.sendToolsListChangedNotification()
+
+	return nil
+}
+
+// DeregisterPrompt removes a prompt from the server
+func (s *MCPServer) DeregisterPrompt(name string) error {
+	s.mu.Lock()
+	if _, exists := s.prompts[name]; !exists {
+		s.mu.Unlock()
+		return fmt.Errorf("prompt not found: %s", name)
+	}
+
+	delete(s.prompts, name)
+	s.mu.Unlock()
+
+	log.Printf("Deregistered prompt: %s", name)
+
+	// Send change notification (after releasing lock to avoid deadlock)
+	s.sendPromptsListChangedNotification()
+
+	return nil
+}
+
+// DeregisterResource removes a resource from the server
+func (s *MCPServer) DeregisterResource(uri string) error {
+	s.mu.Lock()
+	if _, exists := s.resources[uri]; !exists {
+		s.mu.Unlock()
+		return fmt.Errorf("resource not found: %s", uri)
+	}
+
+	delete(s.resources, uri)
+	s.mu.Unlock()
+
+	log.Printf("Deregistered resource: %s", uri)
+
+	// Send change notification (after releasing lock to avoid deadlock)
+	s.sendResourcesListChangedNotification()
+
+	return nil
+}
+
+// HasTool checks if a tool is registered
+func (s *MCPServer) HasTool(name string) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	_, exists := s.tools[name]
+	return exists
+}
+
+// HasPrompt checks if a prompt is registered
+func (s *MCPServer) HasPrompt(name string) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	_, exists := s.prompts[name]
+	return exists
+}
+
+// HasResource checks if a resource is registered
+func (s *MCPServer) HasResource(uri string) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	_, exists := s.resources[uri]
+	return exists
+}
+
+// sendToolsListChangedNotification sends a notification that the tools list has changed
+func (s *MCPServer) sendToolsListChangedNotification() {
+	// Only send notifications if server has been started
+	s.mu.RLock()
+	started := s.started
+	s.mu.RUnlock()
+
+	if !started {
+		// Server not started yet, skip notification
+		return
+	}
+
+	// Send notification to client
+	if err := s.protocol.Notification("notifications/tools/list_changed", nil); err != nil {
+		log.Printf("Failed to send tools list changed notification: %v", err)
+	} else {
+		log.Println("Sent tools list changed notification")
+	}
+}
+
+// sendPromptsListChangedNotification sends a notification that the prompts list has changed
+func (s *MCPServer) sendPromptsListChangedNotification() {
+	// Only send notifications if server has been started
+	s.mu.RLock()
+	started := s.started
+	s.mu.RUnlock()
+
+	if !started {
+		// Server not started yet, skip notification
+		return
+	}
+
+	// Send notification to client
+	if err := s.protocol.Notification("notifications/prompts/list_changed", nil); err != nil {
+		log.Printf("Failed to send prompts list changed notification: %v", err)
+	} else {
+		log.Println("Sent prompts list changed notification")
+	}
+}
+
+// sendResourcesListChangedNotification sends a notification that the resources list has changed
+func (s *MCPServer) sendResourcesListChangedNotification() {
+	// Only send notifications if server has been started
+	s.mu.RLock()
+	started := s.started
+	s.mu.RUnlock()
+
+	if !started {
+		// Server not started yet, skip notification
+		return
+	}
+
+	// Send notification to client
+	if err := s.protocol.Notification("notifications/resources/list_changed", nil); err != nil {
+		log.Printf("Failed to send resources list changed notification: %v", err)
+	} else {
+		log.Println("Sent resources list changed notification")
+	}
 }
 
 func strPtr(s string) *string {

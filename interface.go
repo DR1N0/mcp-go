@@ -17,6 +17,24 @@ type Server interface {
 	// RegisterResource registers a new resource with the server
 	RegisterResource(uri, name, description, mimeType string, handler interface{}) error
 
+	// DeregisterTool removes a tool from the server
+	DeregisterTool(name string) error
+
+	// DeregisterPrompt removes a prompt from the server
+	DeregisterPrompt(name string) error
+
+	// DeregisterResource removes a resource from the server
+	DeregisterResource(uri string) error
+
+	// HasTool checks if a tool is registered
+	HasTool(name string) bool
+
+	// HasPrompt checks if a prompt is registered
+	HasPrompt(name string) bool
+
+	// HasResource checks if a resource is registered
+	HasResource(uri string) bool
+
 	// Serve starts the server and begins handling requests
 	Serve() error
 

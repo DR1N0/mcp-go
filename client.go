@@ -39,7 +39,7 @@ func (c *mcpClient) Initialize(ctx context.Context) (*InitializeResponse, error)
 
 	// Send initialize request
 	params := map[string]interface{}{
-		"protocolVersion": "2025-12-25",
+		"protocolVersion": "2024-11-05",
 		"capabilities":    map[string]interface{}{},
 		"clientInfo": map[string]interface{}{
 			"name":    "mcp-go-client",

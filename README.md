@@ -212,22 +212,22 @@ result = agent.run_sync("What time is it in Tokyo?")
 
 ```
 ┌─────────────────────────────────────────────────┐
-│              Application Layer                   │
+│              Application Layer                  │
 │  (Your Tools, Prompts, Resources, Handlers)     │
 └────────────────┬────────────────────────────────┘
                  │
 ┌────────────────┴────────────────────────────────┐
-│            Server / Client Layer                 │
+│            Server / Client Layer                │
 │  (Registration, Schema Gen, Lifecycle)          │
 └────────────────┬────────────────────────────────┘
                  │
 ┌────────────────┴────────────────────────────────┐
-│            Protocol Layer                        │
+│            Protocol Layer                       │
 │  (JSON-RPC 2.0, Request/Response Correlation)   │
 └────────────────┬────────────────────────────────┘
                  │
 ┌────────────────┴────────────────────────────────┐
-│            Transport Layer                       │
+│            Transport Layer                      │
 │  (stdio / SSE / Streamable HTTP)                │
 └─────────────────────────────────────────────────┘
 ```
