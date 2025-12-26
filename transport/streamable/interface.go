@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/DR1N0/mcp-go/transport"
+	"github.com/DR1N0/mcp-go/types"
 )
 
 // HTTPHandler provides HTTP-specific functionality
@@ -16,6 +17,8 @@ type HTTPHandler interface {
 type ServerTransport interface {
 	transport.ServerTransport
 	HTTPHandler
+	// WithMiddleware adds HTTP middleware to be chained before the MCP handler
+	WithMiddleware(middleware ...types.HTTPMiddleware) ServerTransport
 }
 
 // ClientTransport is a streamable HTTP client transport

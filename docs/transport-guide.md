@@ -316,6 +316,202 @@ transport := streamable.NewClientTransport(
 )
 ```
 
+## HTTP Middleware
+
+**Available on:** Streamable HTTP, SSE
+
+HTTP middleware allows you to add cross-cutting concerns to your MCP servers without modifying your tool/prompt/resource logic. Middleware wraps the HTTP handler chain, enabling features like authentication, logging, CORS, rate limiting, and telemetry.
+
+### Overview
+
+Middleware functions follow the standard Go HTTP pattern:
+
+```go
+type HTTPMiddleware func(http.Handler) http.Handler
+```
+
+Middleware is chained in **reverse order** (following the Chi router pattern), so the last middleware added becomes the outermost wrapper.
+
+### Basic Usage
+
+```go
+import (
+    mcpgo "github.com/DR1N0/mcp-go"
+    "github.com/DR1N0/mcp-go/transport/streamable"
+    "github.com/DR1N0/mcp-go/types"
+)
+
+// Create middleware functions
+func authMiddleware(next http.Handler) http.Handler {
+    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        if r.Header.Get("Authorization") == "" {
+            w.WriteHeader(http.StatusUnauthorized)
+            w.Write([]byte("Authorization required"))
+            return
+        }
+        next.ServeHTTP(w, r)
+    })
+}
+
+func loggingMiddleware(next http.Handler) http.Handler {
+    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        log.Printf("[%s] %s", r.Method, r.URL.Path)
+        next.ServeHTTP(w, r)
+    })
+}
+
+// Apply to transport
+transport := streamable.NewServerTransport("/mcp", ":8080").
+    WithMiddleware(authMiddleware).
+    WithMiddleware(loggingMiddleware)
+
+server := mcpgo.NewServer(transport)
+```
+
+### Execution Order
+
+```
+Request Flow (with 3 middleware):
+1. CORS middleware      (outermost - applied first)
+2. Logging middleware
+3. Auth middleware      (innermost - applied last)
+4. MCP Handler
+```
+
+### Common Patterns
+
+#### Authentication (Bearer Token)
+
+```go
+func bearerAuthMiddleware(next http.Handler) http.Handler {
+    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        token := r.Header.Get("Authorization")
+        if len(token) < 7 || token[:7] != "Bearer " {
+            w.WriteHeader(http.StatusUnauthorized)
+            w.Write([]byte("Invalid auth token"))
+            return
+        }
+        
+        // Validate token (example)
+        if !isValidToken(token[7:]) {
+            w.WriteHeader(http.StatusUnauthorized)
+            return
+        }
+        
+        next.ServeHTTP(w, r)
+    })
+}
+```
+
+#### CORS Headers
+
+```go
+func corsMiddleware(next http.Handler) http.Handler {
+    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        w.Header().Set("Access-Control-Allow-Origin", "*")
+        w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS")
+        w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+        
+        if r.Method == "OPTIONS" {
+            w.WriteHeader(http.StatusOK)
+            return
+        }
+        
+        next.ServeHTTP(w, r)
+    })
+}
+```
+
+#### Rate Limiting
+
+```go
+import "golang.org/x/time/rate"
+
+func rateLimitMiddleware(next http.Handler) http.Handler {
+    limiter := rate.NewLimiter(10, 100) // 10 req/sec, burst 100
+    
+    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        if !limiter.Allow() {
+            w.WriteHeader(http.StatusTooManyRequests)
+            w.Write([]byte("Rate limit exceeded"))
+            return
+        }
+        next.ServeHTTP(w, r)
+    })
+}
+```
+
+#### Request ID Tracking
+
+```go
+import "github.com/google/uuid"
+
+func requestIDMiddleware(next http.Handler) http.Handler {
+    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        requestID := uuid.New().String()
+        w.Header().Set("X-Request-ID", requestID)
+        
+        ctx := context.WithValue(r.Context(), "request_id", requestID)
+        next.ServeHTTP(w, r.WithContext(ctx))
+    })
+}
+```
+
+#### OpenTelemetry Tracing
+
+```go
+import "go.opentelemetry.io/otel"
+
+func telemetryMiddleware(next http.Handler) http.Handler {
+    tracer := otel.Tracer("mcp-server")
+    
+    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        ctx, span := tracer.Start(r.Context(), "mcp.request")
+        defer span.End()
+        
+        span.SetAttributes(
+            attribute.String("http.method", r.Method),
+            attribute.String("http.path", r.URL.Path),
+        )
+        
+        next.ServeHTTP(w, r.WithContext(ctx))
+    })
+}
+```
+
+### Using with SSE Transport
+
+Middleware works identically with SSE:
+
+```go
+transport := sse.NewServerTransport("/mcp/sse", ":8001").
+    WithMiddleware(authMiddleware).
+    WithMiddleware(loggingMiddleware).
+    WithMiddleware(corsMiddleware)
+```
+
+### Complete Example
+
+See `examples/middleware/` for a complete working example with:
+- Bearer token authentication
+- Request logging
+- CORS headers
+- Server and client implementations
+
+```bash
+# Run the middleware example
+make server-middleware  # Terminal 1
+make client-middleware  # Terminal 2
+```
+
+### Production Best Practices
+
+1. **Order Matters**: Place auth middleware after logging for better debugging
+2. **Error Handling**: Always handle errors gracefully in middleware
+3. **Performance**: Avoid blocking operations in middleware
+4. **Security**: Validate all inputs, especially auth tokens
+5. **Observability**: Add logging and metrics to middleware
+
 ## Migration Between Transports
 
 ### Code That Doesn't Change

@@ -1,6 +1,9 @@
 package types
 
-import "context"
+import (
+	"context"
+	"net/http"
+)
 
 // Transport defines the interface for MCP transports
 type Transport interface {
@@ -31,3 +34,9 @@ type ErrorHandler func(error)
 
 // CloseHandler handles connection closure
 type CloseHandler func()
+
+// HTTPMiddleware is a function that wraps an http.Handler to add functionality
+// Middleware functions are chained in reverse order (following Chi router pattern)
+// This allows for flexible composition of cross-cutting concerns like authentication,
+// logging, CORS, rate limiting, and telemetry.
+type HTTPMiddleware func(http.Handler) http.Handler

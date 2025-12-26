@@ -17,10 +17,14 @@ examples/
 │   ├── clients/go/main.go
 │   ├── clients/python/main.py
 │   └── README.md
-└── sse/                         # Server-Sent Events transport
+├── sse/                         # Server-Sent Events transport
+│   ├── server/main.go
+│   ├── clients/go/main.go
+│   ├── clients/python/main.py
+│   └── README.md
+└── middleware/                  # HTTP Middleware example
     ├── server/main.go
-    ├── clients/go/main.go
-    ├── clients/python/main.py
+    ├── client/main.go
     └── README.md
 ```
 
@@ -55,6 +59,10 @@ make client-stdio-python
 make server-sse
 make client-sse
 make client-sse-python
+
+# Middleware (Authentication example)
+make server-middleware
+make client-middleware
 ```
 
 ## 📊 Transport Comparison

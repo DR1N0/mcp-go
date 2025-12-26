@@ -76,3 +76,14 @@ client-sse: ## Run the MCP client with SSE transport
 client-sse-python: ## Run the MCP client with SSE transport (Python)
 	@echo "Starting SSE MCP client (Python)..."
 	uv run ./examples/sse/clients/python/main.py
+
+# Middleware
+.PHONY: server-middleware
+server-middleware: ## Run the middleware example server with authentication
+	@echo "Starting Middleware Example server..."
+	go run ./examples/middleware/server/main.go
+
+.PHONY: client-middleware
+client-middleware: ## Run the middleware example client
+	@echo "Starting Middleware Example client..."
+	go run ./examples/middleware/client/main.go

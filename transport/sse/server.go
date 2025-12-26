@@ -29,6 +29,7 @@ type sseServerTransport struct {
 	errorHandler   types.ErrorHandler
 	closeHandler   types.CloseHandler
 	server         *http.Server
+	middleware     []types.HTTPMiddleware
 	mu             sync.RWMutex
 	sessions       map[string]*sseSession
 	ctx            context.Context
@@ -44,6 +45,7 @@ func NewServerTransport(sseEndpoint string, addr string) ServerTransport {
 	return &sseServerTransport{
 		sseEndpoint: sseEndpoint,
 		sessions:    make(map[string]*sseSession),
+		middleware:  make([]types.HTTPMiddleware, 0),
 		ctx:         ctx,
 		cancel:      cancel,
 		closed:      false,
@@ -51,6 +53,13 @@ func NewServerTransport(sseEndpoint string, addr string) ServerTransport {
 			Addr: addr,
 		},
 	}
+}
+
+// WithMiddleware adds HTTP middleware to be chained before the MCP handler
+// Middleware is chained in reverse order (last added = outermost wrapper)
+func (t *sseServerTransport) WithMiddleware(middleware ...types.HTTPMiddleware) ServerTransport {
+	t.middleware = append(t.middleware, middleware...)
+	return t
 }
 
 // generateSessionID creates a new random session ID
@@ -103,7 +112,13 @@ func (t *sseServerTransport) Start(ctx context.Context) error {
 		w.Write([]byte("OK"))
 	})
 
-	t.server.Handler = mux
+	// Chain middleware in reverse order (last added = outermost)
+	var handler http.Handler = mux
+	for i := len(t.middleware) - 1; i >= 0; i-- {
+		handler = t.middleware[i](handler)
+	}
+
+	t.server.Handler = handler
 
 	// Start server in goroutine
 	go func() {

@@ -28,6 +28,7 @@ type httpServerTransport struct {
 	errorHandler    types.ErrorHandler
 	closeHandler    types.CloseHandler
 	pendingRequests map[interface{}]*pendingRequest
+	middleware      []types.HTTPMiddleware
 	mu              sync.RWMutex
 	timeout         time.Duration
 }
@@ -40,8 +41,16 @@ func NewServerTransport(endpoint, addr string) ServerTransport {
 		endpoint:        endpoint,
 		addr:            addr,
 		pendingRequests: make(map[interface{}]*pendingRequest),
+		middleware:      make([]types.HTTPMiddleware, 0),
 		timeout:         30 * time.Second, // Default 30 second timeout
 	}
+}
+
+// WithMiddleware adds HTTP middleware to be chained before the MCP handler
+// Middleware is chained in reverse order (last added = outermost wrapper)
+func (t *httpServerTransport) WithMiddleware(middleware ...types.HTTPMiddleware) ServerTransport {
+	t.middleware = append(t.middleware, middleware...)
+	return t
 }
 
 // Start initializes the HTTP server and begins listening
@@ -55,6 +64,12 @@ func (t *httpServerTransport) Start(ctx context.Context) error {
 		w.Write([]byte("OK"))
 	})
 
+	// Chain middleware in reverse order (last added = outermost)
+	var handler http.Handler = mux
+	for i := len(t.middleware) - 1; i >= 0; i-- {
+		handler = t.middleware[i](handler)
+	}
+
 	// Try to listen first to catch port-in-use errors immediately
 	listener, err := net.Listen("tcp", t.addr)
 	if err != nil {
@@ -62,7 +77,7 @@ func (t *httpServerTransport) Start(ctx context.Context) error {
 	}
 
 	t.server = &http.Server{
-		Handler: mux,
+		Handler: handler,
 	}
 
 	log.Printf("Streamable HTTP server starting on http://localhost%s%s", t.addr, t.endpoint)
