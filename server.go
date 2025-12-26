@@ -211,7 +211,7 @@ func (s *MCPServer) handleInitialize(ctx context.Context, params interface{}) (i
 	}
 
 	return InitializeResponse{
-		ProtocolVersion: "2024-11-05",
+		ProtocolVersion: "2025-12-25",
 		Capabilities:    capabilities,
 		ServerInfo:      s.info,
 	}, nil
