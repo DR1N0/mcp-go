@@ -1,3 +1,8 @@
+.PHONY: vendor
+vendor: ## Update vendor dependencies
+	@echo "Updating module dependencies..."
+	@GO111MODULE=on go mod tidy
+	@GO111MODULE=on go mod vendor
 
 .PHONY: test
 test: ## Run all tests
@@ -19,6 +24,7 @@ help: ## Show this help message
 
 # Examples
 
+# Streamable HTTP
 .PHONY: server-streamable
 server-streamable: ## Run the MCP server with streamable HTTP transport
 	@echo "Starting Streamable HTTP MCP server..."
@@ -33,3 +39,40 @@ client-streamable: ## Run the MCP client with streamable HTTP transport
 client-streamable-python: ## Run the MCP client with streamable HTTP transport (Python)
 	@echo "Starting Streamable HTTP MCP client (Python)..."
 	uv run ./examples/streamable_http/clients/python/main.py
+
+# Stdio
+.PHONY: build-stdio-server
+build-stdio-server: ## Build the MCP stdio server binary
+	@echo "Building Stdio MCP server binary..."
+	go build -o ./bin/stdio_server ./examples/stdio/server/main.go
+	
+.PHONY: server-stdio
+server-stdio: ## Run the MCP server with stdio transport, for manual testing mainly
+	@echo "Starting Stdio MCP server..."
+	go run ./examples/stdio/server/main.go
+
+.PHONY: client-stdio
+client-stdio: ## Run the MCP client with stdio transport
+	@echo "Starting Stdio MCP client..."
+	go run ./examples/stdio/clients/go/main.go
+
+.PHONY: client-stdio-python
+client-stdio-python: ## Run the MCP client with stdio transport (Python)
+	@echo "Starting Stdio MCP client (Python)..."
+	uv run ./examples/stdio/clients/python/main.py
+
+# SSE
+.PHONY: server-sse
+server-sse: ## Run the MCP server with SSE transport
+	@echo "Starting SSE MCP server..."
+	go run ./examples/sse/server/main.go
+
+.PHONY: client-sse
+client-sse: ## Run the MCP client with SSE transport
+	@echo "Starting SSE MCP client..."
+	go run ./examples/sse/clients/go/main.go
+
+.PHONY: client-sse-python
+client-sse-python: ## Run the MCP client with SSE transport (Python)
+	@echo "Starting SSE MCP client (Python)..."
+	uv run ./examples/sse/clients/python/main.py
