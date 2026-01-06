@@ -87,3 +87,14 @@ server-middleware: ## Run the middleware example server with authentication
 client-middleware: ## Run the middleware example client
 	@echo "Starting Middleware Example client..."
 	go run ./examples/middleware/client/main.go
+
+# GRPC
+.PHONY: server-grpc
+server-grpc: ## Run the MCP server with gRPC transport
+	@echo "Starting gRPC MCP server..."
+	go run ./examples/grpc/server/main.go
+	
+.PHONY: client-grpc
+client-grpc: ## Run the MCP client with gRPC transport
+	@echo "Starting gRPC MCP client..."
+	go run ./examples/grpc/clients/go/main.go

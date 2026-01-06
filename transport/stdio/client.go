@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"sync"
 
+	"github.com/DR1N0/mcp-go/transport"
 	"github.com/DR1N0/mcp-go/types"
 )
 
@@ -22,9 +23,9 @@ type stdioClientTransport struct {
 	stderr         io.ReadCloser
 	reader         *bufio.Reader
 	writer         *bufio.Writer
-	messageHandler types.MessageHandler
-	errorHandler   types.ErrorHandler
-	closeHandler   types.CloseHandler
+	messageHandler transport.MessageHandler
+	errorHandler   transport.ErrorHandler
+	closeHandler   transport.CloseHandler
 	mu             sync.RWMutex
 	ctx            context.Context
 	cancel         context.CancelFunc

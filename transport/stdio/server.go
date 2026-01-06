@@ -9,6 +9,7 @@ import (
 	"os"
 	"sync"
 
+	"github.com/DR1N0/mcp-go/transport"
 	"github.com/DR1N0/mcp-go/types"
 )
 
@@ -16,9 +17,9 @@ import (
 type stdioServerTransport struct {
 	reader         *bufio.Reader
 	writer         *bufio.Writer
-	messageHandler types.MessageHandler
-	errorHandler   types.ErrorHandler
-	closeHandler   types.CloseHandler
+	messageHandler transport.MessageHandler
+	errorHandler   transport.ErrorHandler
+	closeHandler   transport.CloseHandler
 	mu             sync.RWMutex
 	ctx            context.Context
 	cancel         context.CancelFunc

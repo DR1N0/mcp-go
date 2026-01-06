@@ -151,4 +151,4 @@ Ready to build with mcp-go? Here's what to do:
 
 ---
 
-*Last updated: December 2025*
+*Last updated: January 2026*

@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"sync"
 
+	"github.com/DR1N0/mcp-go/transport"
 	"github.com/DR1N0/mcp-go/types"
 )
 
@@ -19,17 +20,17 @@ type sseSession struct {
 	requestChan    chan *types.BaseJSONRPCMessage
 	ctx            context.Context
 	cancel         context.CancelFunc
-	messageHandler types.MessageHandler
+	messageHandler transport.MessageHandler
 }
 
 // sseServerTransport implements SSE transport for MCP servers
 type sseServerTransport struct {
 	sseEndpoint    string
-	messageHandler types.MessageHandler
-	errorHandler   types.ErrorHandler
-	closeHandler   types.CloseHandler
+	messageHandler transport.MessageHandler
+	errorHandler   transport.ErrorHandler
+	closeHandler   transport.CloseHandler
 	server         *http.Server
-	middleware     []types.HTTPMiddleware
+	middleware     []transport.HTTPMiddleware
 	mu             sync.RWMutex
 	sessions       map[string]*sseSession
 	ctx            context.Context
@@ -45,7 +46,7 @@ func NewServerTransport(sseEndpoint string, addr string) ServerTransport {
 	return &sseServerTransport{
 		sseEndpoint: sseEndpoint,
 		sessions:    make(map[string]*sseSession),
-		middleware:  make([]types.HTTPMiddleware, 0),
+		middleware:  make([]transport.HTTPMiddleware, 0),
 		ctx:         ctx,
 		cancel:      cancel,
 		closed:      false,
@@ -57,7 +58,7 @@ func NewServerTransport(sseEndpoint string, addr string) ServerTransport {
 
 // WithMiddleware adds HTTP middleware to be chained before the MCP handler
 // Middleware is chained in reverse order (last added = outermost wrapper)
-func (t *sseServerTransport) WithMiddleware(middleware ...types.HTTPMiddleware) ServerTransport {
+func (t *sseServerTransport) WithMiddleware(middleware ...transport.HTTPMiddleware) ServerTransport {
 	t.middleware = append(t.middleware, middleware...)
 	return t
 }

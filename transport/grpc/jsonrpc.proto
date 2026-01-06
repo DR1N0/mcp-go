@@ -1,0 +1,41 @@
+syntax = "proto3";
+
+package jsonrpc;
+
+option go_package = "github.com/DR1N0/mcp-go/transport/grpc/protogen";
+
+import "google/protobuf/struct.proto";
+
+// JSONRPCService defines the bidirectional streaming service for MCP over gRPC
+service JSONRPCService {
+  // Transport establishes a bidirectional stream for JSON-RPC messages
+  rpc Transport (stream JSONRPCMessage) returns (stream JSONRPCMessage);
+}
+
+// JSONRPCMessage represents a JSON-RPC 2.0 message
+message JSONRPCMessage {
+  string jsonrpc = 1;
+  
+  // ID can be either string or number
+  oneof id {
+    string id_string = 2;
+    int64 id_number = 3;
+  }
+  
+  // For requests and notifications
+  string method = 4;
+  google.protobuf.Struct params = 5;
+  
+  // For responses
+  google.protobuf.Struct result = 6;
+  
+  // For errors
+  JSONRPCError error = 7;
+}
+
+// JSONRPCError represents a JSON-RPC 2.0 error
+message JSONRPCError {
+  int32 code = 1;
+  string message = 2;
+  google.protobuf.Struct data = 3;
+}

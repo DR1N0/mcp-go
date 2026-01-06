@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/DR1N0/mcp-go/transport"
 	"github.com/DR1N0/mcp-go/types"
 )
 
@@ -24,11 +25,11 @@ type httpServerTransport struct {
 	endpoint        string
 	addr            string
 	server          *http.Server
-	messageHandler  types.MessageHandler
-	errorHandler    types.ErrorHandler
-	closeHandler    types.CloseHandler
+	messageHandler  transport.MessageHandler
+	errorHandler    transport.ErrorHandler
+	closeHandler    transport.CloseHandler
 	pendingRequests map[interface{}]*pendingRequest
-	middleware      []types.HTTPMiddleware
+	middleware      []transport.HTTPMiddleware
 	mu              sync.RWMutex
 	timeout         time.Duration
 }
@@ -41,14 +42,14 @@ func NewServerTransport(endpoint, addr string) ServerTransport {
 		endpoint:        endpoint,
 		addr:            addr,
 		pendingRequests: make(map[interface{}]*pendingRequest),
-		middleware:      make([]types.HTTPMiddleware, 0),
+		middleware:      make([]transport.HTTPMiddleware, 0),
 		timeout:         30 * time.Second, // Default 30 second timeout
 	}
 }
 
 // WithMiddleware adds HTTP middleware to be chained before the MCP handler
 // Middleware is chained in reverse order (last added = outermost wrapper)
-func (t *httpServerTransport) WithMiddleware(middleware ...types.HTTPMiddleware) ServerTransport {
+func (t *httpServerTransport) WithMiddleware(middleware ...transport.HTTPMiddleware) ServerTransport {
 	t.middleware = append(t.middleware, middleware...)
 	return t
 }

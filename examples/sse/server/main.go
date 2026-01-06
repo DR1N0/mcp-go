@@ -52,7 +52,7 @@ func main() {
 	if err := server.RegisterResource(
 		"lyrics://never-gonna-give-you-up",
 		"Never Gonna Give You Up Lyrics",
-		"The lyrics of <Never Gonna Give You Up> by <PERSON>",
+		"The lyrics of <Never Gonna Give You Up> by Rick Astley",
 		"text/plain",
 		lyricResource,
 	); err != nil {

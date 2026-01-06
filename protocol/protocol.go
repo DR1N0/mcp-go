@@ -7,12 +7,13 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/DR1N0/mcp-go/transport"
 	"github.com/DR1N0/mcp-go/types"
 )
 
 // jsonRpcProtocol implements the Protocol interface
 type jsonRpcProtocol struct {
-	transport            types.Transport
+	transport            transport.Transport
 	requestHandlers      map[string]RequestHandler
 	notificationHandlers map[string]NotificationHandler
 	pendingRequests      map[interface{}]chan interface{}
@@ -30,7 +31,7 @@ func NewProtocol() Protocol {
 }
 
 // Connect attaches the protocol to a transport
-func (p *jsonRpcProtocol) Connect(transport types.Transport) error {
+func (p *jsonRpcProtocol) Connect(transport transport.Transport) error {
 	p.transport = transport
 
 	// Set up the message handler to route incoming messages

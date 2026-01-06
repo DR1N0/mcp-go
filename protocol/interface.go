@@ -3,13 +3,13 @@ package protocol
 import (
 	"context"
 
-	"github.com/DR1N0/mcp-go/types"
+	"github.com/DR1N0/mcp-go/transport"
 )
 
 // Protocol handles JSON-RPC 2.0 message routing and processing
 type Protocol interface {
 	// Connect attaches the protocol to a transport
-	Connect(transport types.Transport) error
+	Connect(transport transport.Transport) error
 
 	// Request sends a request and waits for a response
 	Request(ctx context.Context, method string, params interface{}) (interface{}, error)

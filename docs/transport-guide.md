@@ -16,11 +16,15 @@ This guide helps you choose the right MCP transport for your use case and shows 
 | CLI tool / command-line app | **Stdio** | Simplest, lowest overhead |
 | Claude Desktop integration | **Stdio** | Native support |
 | Web application | **SSE** | Real-time updates, persistent connection |
-| Microservice / REST API | **Streamable HTTP** | Stateless, scales horizontally |
-| Real-time collaboration | **SSE** | Push notifications built-in |
+| Microservice / REST API | **Streamable HTTP** or **gRPC** | Stateless, scales horizontally |
+| Real-time collaboration | **SSE** or **gRPC** | Push notifications / bidirectional streaming |
 | Serverless / Lambda | **Streamable HTTP** | No persistent state required |
 | Desktop app with subprocess | **Stdio** | Process lifecycle management |
-| Mobile app backend | **Streamable HTTP** | Works with standard HTTP clients |
+| Mobile app backend | **Streamable HTTP** or **gRPC** | Works with standard HTTP clients |
+| Remote MCP server deployment | **gRPC** | Built for remote RPC, efficient binary protocol |
+| Multi-language client support | **gRPC** | Native code generation for many languages |
+| High-performance requirements | **gRPC** | Binary protocol with HTTP/2 |
+| Enterprise/production deployment | **gRPC** | Battle-tested infrastructure, monitoring |
 
 ## Transport Comparison
 
@@ -174,16 +178,16 @@ Add to `claude_desktop_config.json`:
 │  Client │                              │  Server │
 └────┬────┘                              └────┬────┘
      │                                        │
-     │─── GET /mcp/sse (establish) ─────────→│
+     │──── GET /mcp/sse (establish) ─────────→│
      │                                        │
-     │←─── event: endpoint ──────────────────│
-     │     data: /message?session_id=abc     │
+     │←──── event: endpoint ──────────────────│
+     │      data: /message?session_id=abc     │
      │                                        │
-     │─── POST /message?session_id=abc ─────→│
-     │     {method: tools/call}              │
+     │──── POST /message?session_id=abc ─────→│
+     │      {method: tools/call}              │
      │                                        │
      │←─── event: message ────────────────────│
-     │     data: {result: ...}               │
+     │      data: {result: ...}               │
 ```
 
 #### Server Setup
@@ -247,17 +251,17 @@ transport := sse.NewServerTransport(":8001", "/mcp/sse",
 │  Client │                              │  Server │
 └────┬────┘                              └────┬────┘
      │                                        │
-     │─── POST /mcp ────────────────────────→│
-     │     {method: initialize}              │
+     │─── POST /mcp ─────────────────────────→│
+     │     {method: initialize}               │
      │                                        │
      │←─── 200 OK ────────────────────────────│
-     │     {result: {capabilities: ...}}     │
+     │     {result: {capabilities: ...}}      │
      │                                        │
-     │─── POST /mcp ────────────────────────→│
-     │     {method: tools/call}              │
+     │─── POST /mcp ─────────────────────────→│
+     │     {method: tools/call}               │
      │                                        │
      │←─── 200 OK ────────────────────────────│
-     │     {result: {content: [...]}}        │
+     │     {result: {content: [...]}}         │
 ```
 
 #### Server Setup
@@ -315,6 +319,160 @@ transport := streamable.NewClientTransport(
     streamable.WithHTTPClient(httpClient),
 )
 ```
+
+### gRPC Transport
+
+**Best for**: Remote deployment, high-performance microservices, multi-language support
+
+#### How It Works
+
+```
+┌─────────┐         Bidirectional Stream          ┌─────────┐
+│  Client │◄─────────────────────────────────────►│  Server │
+│         │          gRPC over HTTP/2             │         │
+│         │         (Binary Protocol)             │         │
+└─────────┘         Port: 50051 (default)         └─────────┘
+```
+
+#### Server Setup
+
+```go
+import (
+    mcpgo "github.com/DR1N0/mcp-go"
+    "github.com/DR1N0/mcp-go/transport/grpc"
+)
+
+// Create server with gRPC transport (default port 50051)
+transport := grpc.NewServerTransport()
+
+server := mcpgo.NewServer(
+    transport,
+    mcpgo.WithName("grpc-server"),
+    mcpgo.WithVersion("1.0.0"),
+)
+
+// Register tools, prompts, resources...
+
+server.Serve()  // Starts gRPC server
+```
+
+#### Custom Configuration
+
+```go
+import (
+    "google.golang.org/grpc"
+    "google.golang.org/grpc/credentials"
+)
+
+// With custom port
+transport := grpc.NewServerTransport(
+    grpc.WithServerPort(8080),
+)
+
+// With TLS
+creds, _ := credentials.NewServerTLSFromFile("cert.pem", "key.pem")
+transport := grpc.NewServerTransport(
+    grpc.WithServerGRPCOptions(grpc.Creds(creds)),
+)
+
+// With interceptors (similar to HTTP middleware)
+transport := grpc.NewServerTransport().
+    WithInterceptor(authInterceptor).
+    WithStreamInterceptor(loggingInterceptor)
+```
+
+#### Client Setup (Go)
+
+```go
+import (
+    mcpgo "github.com/DR1N0/mcp-go"
+    "github.com/DR1N0/mcp-go/transport/grpc"
+)
+
+// Create client transport
+transport := grpc.NewClientTransport("localhost:50051")
+
+// Create MCP client
+client := mcpgo.NewClient(transport)
+
+// Initialize and use
+ctx := context.Background()
+initResp, err := client.Initialize(ctx)
+```
+
+#### Secure Client Connection
+
+```go
+import (
+    "google.golang.org/grpc"
+    "google.golang.org/grpc/credentials"
+)
+
+// With TLS
+creds, _ := credentials.NewClientTLSFromFile("ca.pem", "")
+transport := grpc.NewClientTransport(
+    "myserver.com:50051",
+    grpc.WithClientGRPCDialOptions(grpc.WithTransportCredentials(creds)),
+)
+```
+
+#### Production Deployment
+
+**Docker Example**:
+```dockerfile
+FROM golang:1.24-alpine AS builder
+WORKDIR /app
+COPY . .
+RUN go build -o server ./cmd/server
+
+FROM alpine:latest
+COPY --from=builder /app/server /server
+EXPOSE 50051
+CMD ["/server"]
+```
+
+**Kubernetes Example**:
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: mcp-grpc-server
+spec:
+  ports:
+  - port: 50051
+    protocol: TCP
+  selector:
+    app: mcp-grpc-server
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mcp-grpc-server
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: mcp-grpc-server
+  template:
+    metadata:
+      labels:
+        app: mcp-grpc-server
+    spec:
+      containers:
+      - name: server
+        image: your-registry/mcp-grpc-server:latest
+        ports:
+        - containerPort: 50051
+```
+
+#### Advantages
+
+1. **Remote Deployment**: Host servers anywhere, not limited to local processes
+2. **Binary Protocol**: Efficient HTTP/2-based binary protocol
+3. **Load Balancing**: Native support for horizontal scaling
+4. **Multi-Language**: Easy to create clients in other languages
+5. **Interceptors**: Built-in support for auth, logging, tracing
+6. **Streaming**: Native bidirectional streaming support
 
 ## HTTP Middleware
 

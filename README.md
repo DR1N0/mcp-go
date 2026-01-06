@@ -190,6 +190,7 @@ result = agent.run_sync("What time is it in Tokyo?")
   - stdio - Standard I/O for subprocess communication
   - SSE - Server-Sent Events for real-time updates
   - Streamable HTTP - Stateless HTTP for cloud deployments
+  - gRPC - High-performance bidirectional streaming for remote deployment
   
 - ✅ **Type-Safe Tool Registration**
   - Automatic JSON schema generation from Go structs
@@ -254,6 +255,12 @@ Industry-first stateless HTTP transport for cloud-native deployments.
 transport := streamable.NewServerTransport("/mcp", ":8080")
 ```
 
+### gRPC
+High-performance bidirectional streaming for remote MCP server deployment.
+```go
+transport := grpc.NewServerTransport()
+```
+
 See [docs/transport-guide.md](docs/transport-guide.md) for detailed comparison and usage.
 
 ## Examples
@@ -263,8 +270,9 @@ See [docs/transport-guide.md](docs/transport-guide.md) for detailed comparison a
 | [stdio/](examples/stdio/) | Basic tool server with subprocess communication | stdio |
 | [sse/](examples/sse/) | Real-time updates with Server-Sent Events | SSE |
 | [streamable_http/](examples/streamable_http/) | Stateless HTTP server for cloud deployment | Streamable HTTP |
+| [grpc/](examples/grpc/) | Remote server with bidirectional streaming | gRPC |
 
-Each example includes both Go server and Python client implementations.
+Each example includes both Go server and client implementations (Python client support varies by transport).
 
 ## Documentation
 

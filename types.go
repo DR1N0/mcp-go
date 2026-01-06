@@ -2,6 +2,7 @@ package mcpgo
 
 // Re-export types from types package for convenience
 import (
+	"github.com/DR1N0/mcp-go/transport"
 	"github.com/DR1N0/mcp-go/types"
 )
 
@@ -10,10 +11,10 @@ type BaseJSONRPCMessage = types.BaseJSONRPCMessage
 type RPCError = types.RPCError
 
 // Re-export transport types
-type Transport = types.Transport
-type MessageHandler = types.MessageHandler
-type ErrorHandler = types.ErrorHandler
-type CloseHandler = types.CloseHandler
+type Transport = transport.Transport
+type MessageHandler = transport.MessageHandler
+type ErrorHandler = transport.ErrorHandler
+type CloseHandler = transport.CloseHandler
 
 // Re-export MCP types
 type InitializeResponse = types.InitializeResponse
